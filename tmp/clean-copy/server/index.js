@@ -1,0 +1,13 @@
+import express from 'express';
+import {openDb,events} from './db.js';
+import {simulate} from './simulation.js';
+import {report} from './reports.js';
+const db=openDb(),app=express();
+app.use(express.json({limit:'10kb'}));
+app.get('/api/runs',(req,res)=>res.json(db.prepare('SELECT id,created,seed,submitted FROM runs ORDER BY submitted DESC,created DESC').all()));
+app.post('/api/runs',(req,res)=>{const seed=req.body.seed;if(!Number.isInteger(seed)||seed<0||seed>4294967295)return res.status(400).json({error:'Seed must be an integer from 0 to 4294967295.'});try{const start=performance.now(),id=simulate(db,{seed});res.status(201).json({id,milliseconds:Math.round(performance.now()-start)});}catch(e){res.status(500).json({error:e.message});}});
+app.get('/api/runs/:id/report',(req,res)=>{const r=report(db,req.params.id);r?res.json(r):res.status(404).json({error:'Run not found'});});
+app.get('/api/runs/:id/days/:day',(req,res)=>{const day=Number(req.params.day);if(!Number.isInteger(day)||day<1||day>60)return res.status(400).json({error:'Day must be 1–60'});res.json(events(db,req.params.id).filter(e=>e.day===day));});
+app.get('/api/runs/:id/export',(req,res)=>{res.setHeader('Content-Disposition',`attachment; filename="run-${req.params.id}.json"`);res.json({report:report(db,req.params.id),history:events(db,req.params.id)});});
+app.use(express.static('dist'));
+app.listen(Number(process.env.PORT)||3000,'127.0.0.1',()=>console.log('Swanston Market: http://localhost:3000'));
